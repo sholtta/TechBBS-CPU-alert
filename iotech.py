@@ -24,7 +24,7 @@ class TechBBSParser:
     def check_for_new_threads(self):
         """
         Function checks for new valid threads, removes old ones and sends an
-        alert via Discrod bot.
+        alert via Telegram bot.
         """
         # find and extract the thread titles and URLs
         thread_data = self.find_valid_threads()
@@ -139,10 +139,10 @@ class TechBBSParser:
         return threads
 
     def send_alert(self, threads):
-        """Function sends Discord bot alert from threads
+        """Function sends Telegram bot alert from threads
 
         Threads defined in `threads` parameter will be parsed and sent via
-        Discord bot
+        Telegram bot
 
         Args:
             threads (list): Threads to send alert of
