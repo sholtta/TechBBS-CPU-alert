@@ -1,8 +1,8 @@
 import os
-import requests
 import argparse
 import json
 import re
+import requests
 import telebot
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
@@ -10,6 +10,11 @@ from dotenv import load_dotenv
 
 
 class TechBBSParser:
+    """
+    Class for scraping TechBBS forum marketplace and finding desired CPUs
+    and sending alerts via Telegram bot.
+    """
+
     def __init__(self, cpus):
         load_dotenv()
         self.cpus = cpus
@@ -19,7 +24,6 @@ class TechBBSParser:
         self.bot_token = os.getenv("BOT_TOKEN")
         self.chat_id = os.getenv("CHAT_ID")
         self.bot = telebot.TeleBot(token=self.bot_token)
-
 
     def check_for_new_threads(self):
         """
@@ -31,7 +35,7 @@ class TechBBSParser:
 
         # compare the current thread data with the previous state here
         new_threads = []
-        with open("thread_data.json", "r") as data:
+        with open("thread_data.json", "r", encoding="utf-8") as data:
             old_data = json.load(data)
             for thread in thread_data:
                 for old_thread in old_data:
@@ -48,7 +52,7 @@ class TechBBSParser:
         data = self.remove_old_threads(old_data, 14)
 
         # dump data to a json file
-        with open("thread_data.json", "w") as outfile:
+        with open("thread_data.json", "w", encoding="utf-8") as outfile:
             json.dump(data, outfile, indent=4)
 
         # if new threads are detected, send an alert
@@ -66,7 +70,7 @@ class TechBBSParser:
         Returns:
             list: List of valid threads
         """
-        response = requests.get(self.forum_url + self.sub_url)
+        response = requests.get(self.forum_url + self.sub_url, timeout=60)
         soup = BeautifulSoup(response.text, "html.parser")
         thread_data = []
 
@@ -93,15 +97,17 @@ class TechBBSParser:
                 thread_items[1].text,
             )
 
-            thread_title = self.clean_string(thread_title) # clean thread title
+            thread_title = self.clean_string(thread_title)  # clean thread title
             # check if thread type matches class variable and if thread title contains
-            # wanted string defined in script arguments 
+            # wanted string defined in script arguments
             if thread_type not in self.valid_type:
                 continue
             if not any(cpu.lower() in thread_title.lower() for cpu in self.cpus):
                 continue
 
-            thread_url = f"{self.forum_url}{thread_items[1].get('href')}" # url to the thread
+            thread_url = (
+                f"{self.forum_url}{thread_items[1].get('href')}"  # url to the thread
+            )
 
             date_cell = thread.find(
                 "div", class_="structItem-cell structItem-cell--latest"
@@ -132,9 +138,9 @@ class TechBBSParser:
         for i, thread in enumerate(threads):
             # convert thread date to datetime object
             date = datetime.fromisoformat(thread["date"])
-            date_delta = today - date # thread age
+            date_delta = today - date  # thread age
             if date_delta.days > max_thread_age:
-                threads.pop(i) # remove thread from list
+                threads.pop(i)  # remove thread from list
 
         return threads
 
@@ -147,7 +153,7 @@ class TechBBSParser:
         Args:
             threads (list): Threads to send alert of
         """
-        alert_items = self.parse_alert_threads(threads) # parse threads
+        alert_items = self.parse_alert_threads(threads)  # parse threads
 
         for item in alert_items:
             message = f"*Uusi prossu myynnissä:*\n\n\U0001f579 *Tuote:* {item['model']}\n\U0001f4b5 *Hinta:* {item['price']}\n\U0001f4c6 *Ostettu:* {item['product_bought']}\n\U0001f9fe *Kuitti, takuu:* {item['warranty']}\n\U0001f4ce *Linkki:* [Tässä]({item['url']})\n"
@@ -172,7 +178,7 @@ class TechBBSParser:
         alert_items = []
 
         for thread in threads:
-            response = requests.get(thread["url"])
+            response = requests.get(thread["url"], timeout=60)
             soup = BeautifulSoup(response.text, "html.parser")
             main_cell = soup.find("div", class_="bbWrapper")
             item_cells = main_cell.find_all("b")
@@ -206,8 +212,7 @@ class TechBBSParser:
         return st
 
     def print_logs(self, log):
-        """Function prints logs with a timestamp.
-        """
+        """Function prints logs with a timestamp."""
         time_stamp = datetime.now(timezone.utc)
         print(f"{time_stamp}: {log}")
 
