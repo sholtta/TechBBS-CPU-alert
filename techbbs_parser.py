@@ -272,7 +272,7 @@ if __name__ == "__main__":
         "--cpus",
         nargs="+",
         type=str,
-        help="List of CPU entries to seek",
+        help="List of CPU entries to seek, seperated by whitespace",
         required=True,
     )
     args = parser.parse_args()
