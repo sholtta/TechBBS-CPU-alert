@@ -1,12 +1,18 @@
 import os
+import asyncio
 import argparse
 import json
 import re
+import logging
 import requests
+import aiohttp
 import telebot
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 
 class TechBBSParser:
@@ -23,6 +29,8 @@ class TechBBSParser:
         self.valid_type = "Myydään"
         self.bot_token = os.getenv("BOT_TOKEN")
         self.chat_id = os.getenv("CHAT_ID")
+        if not self.bot_token or not self.chat_id:
+            raise ValueError("Missing BOT_TOKEN or CHAT_ID in environment variables.")
         self.bot = telebot.TeleBot(token=self.bot_token)
 
     def check_for_new_threads(self):
@@ -33,33 +41,25 @@ class TechBBSParser:
         # find and extract the thread titles and URLs
         thread_data = self.find_valid_threads()
 
-        # compare the current thread data with the previous state here
         new_threads = []
-        with open("thread_data.json", "r", encoding="utf-8") as data:
-            old_data = json.load(data)
-            for thread in thread_data:
-                for old_thread in old_data:
-                    if thread["url"] == old_thread["url"]:
-                        break
-                else:
-                    new_threads.append(thread)
+        old_data = self.load_old_data()
 
-        # append new data to old data
-        for item in new_threads:
-            old_data.append(item)
-
-        # remove old threads (14 days old)
-        data = self.remove_old_threads(old_data, 14)
-
-        # dump data to a json file
-        with open("thread_data.json", "w", encoding="utf-8") as outfile:
-            json.dump(data, outfile, indent=4)
+        # compare thread urls with old data and create a list with new threads
+        existing_urls = {thread["url"] for thread in old_data}
+        new_threads = [
+            thread for thread in thread_data if thread["url"] not in existing_urls
+        ]
 
         # if new threads are detected, send an alert
         if new_threads:
-            self.print_logs("Found new items")
-            self.print_logs(new_threads)
+            self.print_logs(f"Found new items:\n{new_threads}")
             self.send_alert(new_threads)
+
+            old_data.extend(new_threads)  # append new threads
+            old_data = self.remove_old_threads(old_data, 14)  # Remove old ones
+
+            with open("thread_data.json", "w", encoding="utf-8") as outfile:
+                json.dump(old_data, outfile, indent=4)
 
     def find_valid_threads(self):
         """Function finds valid threads for script to use.
@@ -113,12 +113,30 @@ class TechBBSParser:
                 "div", class_="structItem-cell structItem-cell--latest"
             )
             date_cell = date_cell.find("a").find("time")
-            date = date_cell.get("datetime")
+            date = date_cell.get("datetime", "Unknown")
 
             # append thread to thread_data
             thread_data.append({"title": thread_title, "url": thread_url, "date": date})
 
         return thread_data
+
+    def load_old_data(self, file_path="thread_data.json"):
+        """Loads old thread data from a JSON file, handling file absence gracefully.
+
+        Args:
+            file_path (str): path to JSON file containing the old data
+
+        Returns:
+            list: loaded JSON object, or empty list
+        """
+        if not os.path.exists(file_path):
+            return []  # return an empty list if file doesn't exist
+
+        with open(file_path, "r", encoding="utf-8") as data:
+            try:
+                return json.load(data)
+            except json.JSONDecodeError:
+                return []  # return an empty list if JSON is malformed
 
     def remove_old_threads(self, threads: list, max_thread_age: int = 14):
         """Function removes old threads from the thread list
@@ -133,16 +151,14 @@ class TechBBSParser:
         Returns:
             list: List of threads after removing old threads
         """
+        cleaned_list = []
         today = datetime.now(timezone.utc)
 
-        for i, thread in enumerate(threads):
-            # convert thread date to datetime object
-            date = datetime.fromisoformat(thread["date"])
-            date_delta = today - date  # thread age
-            if date_delta.days > max_thread_age:
-                threads.pop(i)  # remove thread from list
+        for thread in threads:
+            if (today - datetime.fromisoformat(thread["date"])).days <= max_thread_age:
+                cleaned_list.append(thread)
 
-        return threads
+        return cleaned_list
 
     def send_alert(self, threads):
         """Function sends Telegram bot alert from threads
@@ -165,36 +181,67 @@ class TechBBSParser:
             )
 
     def parse_alert_threads(self, threads):
-        """Function parses the list of threads and returns them as alert items.
-
-        Alert items contain CPU model, price, bought date, warranty and thread url.
+        """Wrapper function to call the async function synchronously
 
         Args:
-            threads (list): Threads to parse.
+            threads (list): Threads to parse
+
+        Returns:
+            list: Alert items list
+        """
+        return asyncio.run(self.parse_alert_threads_async(threads))
+
+    async def fetch_page(self, session, url):
+        """Fetch the page content asynchronously
+
+        Args:
+            session (obj): aiohttp client session
+            url (str): url for the request
+
+        Returns:
+            str: response text
+        """
+        async with session.get(url, timeout=60) as response:
+            return await response.text()
+
+    async def parse_alert_threads_async(self, threads):
+        """Asynchronous version of parse_alert_threads
+
+        Args:
+            threads (list): Threads to parse
 
         Returns:
             list: Alert items list
         """
         alert_items = []
 
-        for thread in threads:
-            response = requests.get(thread["url"], timeout=60)
-            soup = BeautifulSoup(response.text, "html.parser")
-            main_cell = soup.find("div", class_="bbWrapper")
-            item_cells = main_cell.find_all("b")
-            alert_item = {}
-            for i, item in enumerate(item_cells[0:4]):
-                item = item.next_sibling[2:]
-                if i == 0:
-                    alert_item["model"] = item
-                elif i == 1:
-                    alert_item["price"] = item
-                elif i == 2:
-                    alert_item["product_bought"] = item
-                elif i == 3:
-                    alert_item["warranty"] = item
-            alert_item["url"] = thread["url"]
-            alert_items.append(alert_item)
+        async with aiohttp.ClientSession() as session:
+            tasks = [self.fetch_page(session, thread["url"]) for thread in threads]
+            pages = await asyncio.gather(*tasks)  # fetch all pages concurrently
+
+            for i, page_content in enumerate(pages):
+                soup = BeautifulSoup(page_content, "html.parser")
+                main_cell = soup.find("div", class_="bbWrapper")
+
+                if not main_cell:
+                    continue  # skip if page structure is different
+
+                item_cells = main_cell.find_all("b")
+                alert_item = {}
+
+                for j, item in enumerate(item_cells[:4]):  # extract up to 4 items
+                    item = item.next_sibling[2:] if item.next_sibling else "Unknown"
+                    if j == 0:
+                        alert_item["model"] = item
+                    elif j == 1:
+                        alert_item["price"] = item
+                    elif j == 2:
+                        alert_item["product_bought"] = item
+                    elif j == 3:
+                        alert_item["warranty"] = item
+
+                alert_item["url"] = threads[i]["url"]
+                alert_items.append(alert_item)
 
         return alert_items
 
@@ -207,14 +254,11 @@ class TechBBSParser:
         Returns:
             str: Cleaned string.
         """
-        #  remove \n and \t
-        st = string.replace("\t", "").replace("\n", "")
-        return st
+        return string.replace("\t", "").replace("\n", "").strip()
 
     def print_logs(self, log):
         """Function prints logs with a timestamp."""
-        time_stamp = datetime.now(timezone.utc)
-        print(f"{time_stamp}: {log}")
+        logging.info(log)
 
 
 if __name__ == "__main__":
