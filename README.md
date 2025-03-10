@@ -10,8 +10,16 @@ python3 -m venv .venv
 
 To install packages required by the script, run:
 
+On Linux/MacOS:
+
 ```
 .venv/bin/python3 -m pip install -r requirements.txt
+```
+
+On Windows:
+
+```
+.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
 For script to work, you'll need `.env` file for storing your Telegram bot API token and chat ID.
@@ -28,6 +36,15 @@ For more info about creating a Telegram bot and getting the token and chat ID, l
 # Running the script
 
 You can pass wanted CPUs after `--cpus` flag seperated by whitespace. For example:
+
+On Linux/MacOS:
+
 ```
 .venv/bin/python3 techbbs_parser.py --cpus 7800X3D 9900K 9800X3D
+```
+
+On Windows:
+
+```
+.venv\Scripts\python.exe techbbs_parser.py --cpus 7800X3D 9900K 9800X3D
 ```
