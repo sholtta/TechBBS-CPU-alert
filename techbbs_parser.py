@@ -172,7 +172,12 @@ class TechBBSParser:
         alert_items = self.parse_alert_threads(threads)  # parse threads
 
         for item in alert_items:
-            message = f"*Uusi prossu myynnissä:*\n\n\U0001f579 *Tuote:* {item['model']}\n\U0001f4b5 *Hinta:* {item['price']}\n\U0001f4c6 *Ostettu:* {item['product_bought']}\n\U0001f9fe *Kuitti, takuu:* {item['warranty']}\n\U0001f4ce *Linkki:* [Tässä]({item['url']})\n"
+            message = f"*Uusi prossu myynnissä:*\n\n" \
+                      f"\U0001f579 *Tuote:* {item['model']}\n" \
+                      f"\U0001f4b5 *Hinta:* {item['price']}\n" \
+                      f"\U0001f4c6 *Ostettu:* {item['product_bought']}\n" \
+                      f"\U0001f9fe *Kuitti, takuu:* {item['warranty']}\n" \
+                      f"\U0001f4ce *Linkki:* [Tässä]({item['url']})\n"
             self.bot.send_message(
                 self.chat_id,
                 message,
