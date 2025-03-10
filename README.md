@@ -29,5 +29,5 @@ For more info about creating a Telegram bot and getting the token and chat ID, l
 
 You can pass wanted CPUs after `--cpus` flag seperated by whitespace. For example:
 ```
-.venv/bin/python3 iotech.py --cpus 7800X3D 9900K 9800X3D
+.venv/bin/python3 techbbs_parser.py --cpus 7800X3D 9900K 9800X3D
 ```
