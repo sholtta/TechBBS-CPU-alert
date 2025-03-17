@@ -12,31 +12,48 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
+load_dotenv()
+BOT_TOKEN = os.getenv("BOT_TOKEN", "") # Telegram bot token from environment variables
+CHAT_ID = os.getenv("CHAT_ID", "") # Telegram chat ID from environment variables
+DEFAULT_TIMEOUT = int(os.getenv("DEFAULT_TIMEOUT", 60)) # Default timeout for requests
+MAX_THREAD_AGE = int(os.getenv("MAX_THREAD_AGE", 14)) # Maximum thread age in days
+CPUS = os.getenv("CPUS", "").split() # CPUs to search for
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s") # Logging configuration
 
 
 class TechBBSParser:
     """
     Class for scraping TechBBS forum marketplace and finding desired CPUs
     and sending alerts via Telegram bot.
+
+    Attributes:
+        cpus (list): List of CPUs to search for.
+        forum_url (str): Base URL of the TechBBS forum.
+        sub_url (str): Sub-URL of the specific forum section.
+        valid_type (str): Type of threads to look for.
+        bot (telebot.TeleBot): Instance of the Telegram bot.
     """
 
     def __init__(self, cpus):
-        load_dotenv()
         self.cpus = cpus
         self.forum_url = "https://bbs.io-tech.fi"
         self.sub_url = "/forums/prosessorit-emolevyt-ja-muistit.73/"
         self.valid_type = "Myydään"
-        self.bot_token = os.getenv("BOT_TOKEN")
-        self.chat_id = os.getenv("CHAT_ID")
-        if not self.bot_token or not self.chat_id:
+        if not BOT_TOKEN or not CHAT_ID:
             raise ValueError("Missing BOT_TOKEN or CHAT_ID in environment variables.")
-        self.bot = telebot.TeleBot(token=self.bot_token)
+        self.bot = telebot.TeleBot(token=BOT_TOKEN)
 
     def check_for_new_threads(self):
         """
-        Function checks for new valid threads, removes old ones and sends an
+        Checks for new valid threads, removes old ones and sends an
         alert via Telegram bot.
+
+        This method compares the current threads with previously stored threads,
+        identifies new threads, and sends an alert if new threads are found. It
+        also updates the stored threads by removing old ones.
+
+        Raises:
+            ValueError: If environment variables BOT_TOKEN or CHAT_ID are missing.
         """
         # find and extract the thread titles and URLs
         thread_data = self.find_valid_threads()
@@ -56,25 +73,31 @@ class TechBBSParser:
             self.send_alert(new_threads)
 
             old_data.extend(new_threads)  # append new threads
-            old_data = self.remove_old_threads(old_data, 14)  # Remove old ones
+            old_data = self.remove_old_threads(old_data)  # Remove old ones
 
             with open("thread_data.json", "w", encoding="utf-8") as outfile:
                 json.dump(old_data, outfile, indent=4)
 
     def find_valid_threads(self):
-        """Function finds valid threads for script to use.
+        """Finds valid threads for script to use.
 
-        Function uses BeautifulSoup to scrape the website and parses needed
-        data from the threads found in the website.
+        This method uses BeautifulSoup to scrape the website and parses needed
+        data from the threads found on the website. It filters threads based on
+        the specified type and CPUs of interest.
 
         Returns:
-            list: List of valid threads
+            list: List of valid threads containing title, URL, and date.
         """
-        response = requests.get(self.forum_url + self.sub_url, timeout=60)
+        try:
+            response = requests.get(self.forum_url + self.sub_url, timeout=DEFAULT_TIMEOUT)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            self.print_logs(f"Network error occurred: {e}")
+            return []
         soup = BeautifulSoup(response.text, "html.parser")
         thread_data = []
 
-        self.print_logs("Checking for valid threads")
+        self.print_logs(f"Checking for valid threads for CPUs: {self.cpus}")
 
         # find and extract the thread titles and URLs
         thread_elements = soup.find_all(
@@ -132,13 +155,14 @@ class TechBBSParser:
         if not os.path.exists(file_path):
             return []  # return an empty list if file doesn't exist
 
-        with open(file_path, "r", encoding="utf-8") as data:
-            try:
+        try:
+            with open(file_path, "r", encoding="utf-8") as data:
                 return json.load(data)
-            except json.JSONDecodeError:
-                return []  # return an empty list if JSON is malformed
+        except (IOError, json.JSONDecodeError) as e:
+            self.print_logs(f"Error loading old data: {e}")
+            return []
 
-    def remove_old_threads(self, threads: list, max_thread_age: int = 14):
+    def remove_old_threads(self, threads: list, max_thread_age: int = MAX_THREAD_AGE):
         """Function removes old threads from the thread list
 
         Threads older than `max_thread_age` parameter definition will be removed
@@ -172,18 +196,24 @@ class TechBBSParser:
         alert_items = self.parse_alert_threads(threads)  # parse threads
 
         for item in alert_items:
-            message = f"*Uusi prossu myynnissä:*\n\n" \
-                      f"\U0001f579 *Tuote:* {item['model']}\n" \
-                      f"\U0001f4b5 *Hinta:* {item['price']}\n" \
-                      f"\U0001f4c6 *Ostettu:* {item['product_bought']}\n" \
-                      f"\U0001f9fe *Kuitti, takuu:* {item['warranty']}\n" \
-                      f"\U0001f4ce *Linkki:* [Tässä]({item['url']})\n"
-            self.bot.send_message(
-                self.chat_id,
-                message,
-                parse_mode="Markdown",
-                disable_web_page_preview=True,
+            message = (
+                f"*Uusi prossu myynnissä:*\n\n"
+                f"\U0001f579 *Tuote:* {item['model']}\n"
+                f"\U0001f4b5 *Hinta:* {item['price']}\n"
+                f"\U0001f4c6 *Ostettu:* {item['product_bought']}\n"
+                f"\U0001f9fe *Kuitti, takuu:* {item['warranty']}\n"
+                f"\U0001f4ce *Linkki:* [Tässä]({item['url']})\n"
             )
+
+            try:
+                self.bot.send_message(
+                    CHAT_ID,
+                    message,
+                    parse_mode="Markdown",
+                    disable_web_page_preview=True,
+                )
+            except telebot.apihelper.ApiException as e:
+                self.print_logs(f"Failed to send alert: {e}")
 
     def parse_alert_threads(self, threads):
         """Wrapper function to call the async function synchronously
@@ -206,8 +236,13 @@ class TechBBSParser:
         Returns:
             str: response text
         """
-        async with session.get(url, timeout=60) as response:
-            return await response.text()
+        try:
+            async with session.get(url, timeout=60) as response:
+                response.raise_for_status()
+                return await response.text()
+        except aiohttp.ClientError as e:
+            self.print_logs(f"Failed to fetch {url}: {e}")
+            return ""
 
     async def parse_alert_threads_async(self, threads):
         """Asynchronous version of parse_alert_threads
@@ -273,9 +308,9 @@ if __name__ == "__main__":
         nargs="+",
         type=str,
         help="List of CPU entries to seek, seperated by whitespace",
-        required=True,
+        default=CPUS,
+        required=(not CPUS),
     )
     args = parser.parse_args()
-
     bbs = TechBBSParser(args.cpus)
     bbs.check_for_new_threads()
