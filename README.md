@@ -26,11 +26,11 @@ For script to work, you'll need `.env` file for storing your Telegram bot API to
 
 Create a file called `.env` inside the repository folder containing following parameters:
 
-`CPUS` contains the wanted CPUs to search for seperated ny whitespace
-`BOT_TOKEN` has the token of your Telegram bot
-`CHAT_ID` has the chat ID of your bot's chat
-`DEFAULT_TIMEOUT` is default timeout in seconds for requests
-`MAX_THREAD_AGE` is maximum thread age before old threads are deleted from data JSON
+`CPUS` contains the wanted CPUs to search for seperated ny whitespace.
+`BOT_TOKEN` has the token of your Telegram bot.
+`CHAT_ID` has the chat ID of your bot's chat.
+`DEFAULT_TIMEOUT` is default timeout in seconds for requests.
+`MAX_THREAD_AGE` is maximum thread age before old threads are deleted from data JSON.
 
 ```
 CPUS="5900X 9800X3D"
