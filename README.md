@@ -44,16 +44,14 @@ For more info about creating a Telegram bot and getting the token and chat ID, l
 
 # Running the script
 
-You can pass wanted CPUs after `--cpus` flag seperated by whitespace. For example:
-
 On Linux/MacOS:
 
 ```
-.venv/bin/python3 techbbs_parser.py --cpus 7800X3D 9900K 9800X3D
+.venv/bin/python3 techbbs_parser.py
 ```
 
 On Windows:
 
 ```
-.venv\Scripts\python.exe techbbs_parser.py --cpus 7800X3D 9900K 9800X3D
+.venv\Scripts\python.exe techbbs_parser.py
 ```
