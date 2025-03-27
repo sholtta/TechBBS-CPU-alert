@@ -13,12 +13,19 @@ from dotenv import load_dotenv
 
 
 load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN", "") # Telegram bot token from environment variables
-CHAT_ID = os.getenv("CHAT_ID", "") # Telegram chat ID from environment variables
-DEFAULT_TIMEOUT = int(os.getenv("DEFAULT_TIMEOUT", 60)) # Default timeout for requests
-MAX_THREAD_AGE = int(os.getenv("MAX_THREAD_AGE", 14)) # Maximum thread age in days
-CPUS = os.getenv("CPUS", "").split() # CPUs to search for
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s") # Logging configuration
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")  # Telegram bot token from environment variables
+CHAT_ID = os.getenv("CHAT_ID", "")  # Telegram chat ID from environment variables
+DEFAULT_TIMEOUT = int(os.getenv("DEFAULT_TIMEOUT", 60))  # Default timeout for requests
+MAX_THREAD_AGE = int(os.getenv("MAX_THREAD_AGE", 14))  # Maximum thread age in days
+CPUS = [
+    cpu.strip() for cpu in os.getenv("CPUS", "").split(",") if cpu.strip()
+]  # Clean and split CPUs
+GPUS = [
+    gpu.strip() for gpu in os.getenv("GPUS", "").split(",") if gpu.strip()
+]  # Clean and split GPUs
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(message)s"
+)  # Logging configuration
 
 
 class TechBBSParser:
@@ -34,10 +41,8 @@ class TechBBSParser:
         bot (telebot.TeleBot): Instance of the Telegram bot.
     """
 
-    def __init__(self, cpus):
-        self.cpus = cpus
+    def __init__(self):
         self.forum_url = "https://bbs.io-tech.fi"
-        self.sub_url = "/forums/prosessorit-emolevyt-ja-muistit.73/"
         self.valid_type = "Myydään"
         if not BOT_TOKEN or not CHAT_ID:
             raise ValueError("Missing BOT_TOKEN or CHAT_ID in environment variables.")
@@ -55,8 +60,16 @@ class TechBBSParser:
         Raises:
             ValueError: If environment variables BOT_TOKEN or CHAT_ID are missing.
         """
-        # find and extract the thread titles and URLs
-        thread_data = self.find_valid_threads()
+        # get thread data for CPUs and GPUs
+        if CPUS:
+            sub_url = "/forums/prosessorit-emolevyt-ja-muistit.73/"
+            cpu_data = self.find_valid_threads(CPUS, sub_url)
+        if GPUS:
+            sub_url = "/forums/naytonohjaimet.74/"
+            gpu_data = self.find_valid_threads(GPUS, sub_url)
+
+        # combine CPU and GPU data
+        thread_data = cpu_data + gpu_data if CPUS and GPUS else cpu_data or gpu_data
 
         new_threads = []
         old_data = self.load_old_data()
@@ -78,7 +91,7 @@ class TechBBSParser:
             with open("thread_data.json", "w", encoding="utf-8") as outfile:
                 json.dump(old_data, outfile, indent=4)
 
-    def find_valid_threads(self):
+    def find_valid_threads(self, items, sub_url):
         """Finds valid threads for script to use.
 
         This method uses BeautifulSoup to scrape the website and parses needed
@@ -89,7 +102,7 @@ class TechBBSParser:
             list: List of valid threads containing title, URL, and date.
         """
         try:
-            response = requests.get(self.forum_url + self.sub_url, timeout=DEFAULT_TIMEOUT)
+            response = requests.get(self.forum_url + sub_url, timeout=DEFAULT_TIMEOUT)
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             self.print_logs(f"Network error occurred: {e}")
@@ -97,7 +110,7 @@ class TechBBSParser:
         soup = BeautifulSoup(response.text, "html.parser")
         thread_data = []
 
-        self.print_logs(f"Checking for valid threads for CPUs: {self.cpus}")
+        self.print_logs(f"Checking for valid threads for items: {items}")
 
         # find and extract the thread titles and URLs
         thread_elements = soup.find_all(
@@ -121,11 +134,11 @@ class TechBBSParser:
             )
 
             thread_title = self.clean_string(thread_title)  # clean thread title
-            # check if thread type matches class variable and if thread title contains
-            # wanted string defined in script arguments
+
+            # check if thread title contains wanted string defined in environment variables
             if thread_type not in self.valid_type:
                 continue
-            if not any(cpu.lower() in thread_title.lower() for cpu in self.cpus):
+            if not any(item.lower() in thread_title.lower() for item in items):
                 continue
 
             thread_url = (
@@ -138,8 +151,21 @@ class TechBBSParser:
             date_cell = date_cell.find("a").find("time")
             date = date_cell.get("datetime", "Unknown")
 
+            # check the product type
+            if "prosessorit" in sub_url:
+                product_type = "prossu"
+            if "naytonohjaimet" in sub_url:
+                product_type = "näyttis"
+
             # append thread to thread_data
-            thread_data.append({"title": thread_title, "url": thread_url, "date": date})
+            thread_data.append(
+                {
+                    "product": product_type,
+                    "title": thread_title,
+                    "url": thread_url,
+                    "date": date,
+                }
+            )
 
         return thread_data
 
@@ -197,7 +223,7 @@ class TechBBSParser:
 
         for item in alert_items:
             message = (
-                f"*Uusi prossu myynnissä:*\n\n"
+                f"*Uusi {item['product']} myynnissä:*\n\n"
                 f"\U0001f579 *Tuote:* {item['model']}\n"
                 f"\U0001f4b5 *Hinta:* {item['price']}\n"
                 f"\U0001f4c6 *Ostettu:* {item['product_bought']}\n"
@@ -280,6 +306,9 @@ class TechBBSParser:
                     elif j == 3:
                         alert_item["warranty"] = item
 
+                # add product_type from thread_data
+                alert_item["product"] = threads[i]["product"]
+
                 alert_item["url"] = threads[i]["url"]
                 alert_items.append(alert_item)
 
@@ -302,15 +331,5 @@ class TechBBSParser:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Parser for finding new GPU listings")
-    parser.add_argument(
-        "--cpus",
-        nargs="+",
-        type=str,
-        help="List of CPU entries to seek, seperated by whitespace",
-        default=CPUS,
-        required=(not CPUS),
-    )
-    args = parser.parse_args()
-    bbs = TechBBSParser(args.cpus)
+    bbs = TechBBSParser()
     bbs.check_for_new_threads()
