@@ -1,4 +1,4 @@
-# TechBBS-CPU-alert
+# TechBBS-Telegram-alert
  Python script for scraping TechBBS marketplace and sending alerts for wanted CPUs via Telegram bot.
 
 # Setting up environment
