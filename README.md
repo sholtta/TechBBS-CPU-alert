@@ -39,12 +39,12 @@ Create a file called `.env` inside the repository folder containing following pa
 `MAX_THREAD_AGE` is maximum thread age before old threads are deleted from data JSON.
 
 ```
-CPUS="5900X,9800X3D"
-GPUS="7900XTX,3070 Ti"
+CPUS="5900X,9800X3D" # optional
+GPUS="7900XTX,3070 Ti" # optional
 BOT_TOKEN="your_bot_token"
 CHAT_ID="your_chat_id"
-DEFAULT_TIMEOUT="60"
-MAX_THREAD_AGE="14"
+DEFAULT_TIMEOUT="60" # optional
+MAX_THREAD_AGE="14" # optional
 ```
 
 For more info about creating a Telegram bot and getting the token and chat ID, look [here](https://gist.github.com/nafiesl/4ad622f344cd1dc3bb1ecbe468ff9f8a).
