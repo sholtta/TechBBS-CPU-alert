@@ -1,5 +1,5 @@
 # TechBBS-Telegram-alert
- Python script for scraping TechBBS marketplace and sending alerts for wanted CPUs via Telegram bot.
+ Python script for scraping TechBBS marketplace and sending alerts for wanted CPUs and GPUs via Telegram bot.
 
 # Setting up environment
 Python virtual environment is recommended for using this script. To create Python virtual environment, run the following command inside the repository folder:
